@@ -1,40 +1,87 @@
+import json
 import time
 from typing import Any, Dict, List
 
-from core.config import MODEL_NAME, VECTOR_STORE_PATH
-from rag.retriever import Retriever
+from core.config import MODEL_NAME
 from services.llm_service import LLMService
+from tools.registry import ToolRegistry
 
 
 class Orchestrator:
     def __init__(self) -> None:
         self._llm_service = LLMService()
-        self._retriever = Retriever(VECTOR_STORE_PATH)
+        self._tool_registry = ToolRegistry()
 
-    def handle_chat(self, message: str, request_id: str, session_id: str | None = None) -> Dict[str, Any]:
+    def handle_chat(
+        self,
+        message: str,
+        request_id: str,
+        session_id: str | None = None
+    ) -> Dict[str, Any]:
         start_time = time.time()
+        tool_trace: List[Dict[str, Any]] = []
+        citations: List[Dict[str, Any]] = []
+        route = "direct"
 
-        retrieved_chunks = self._retriever.retrieve(message, top_k=3)
-
-        retrieved_context = "\n\n".join(
-            [chunk.content for chunk in retrieved_chunks]
+        decision = self._llm_service.decide_tool(
+            user_message=message,
+            tools=self._tool_registry.list_tools()
         )
 
-        answer = self._llm_service.generate_response(
-            message,
-            retrieved_context=retrieved_context
-        )
+        if decision.need_tool and decision.tool_name:
+            route = "tool"
+
+            tool_start = time.time()
+            try:
+                tool_output = self._tool_registry.execute(
+                    decision.tool_name,
+                    decision.tool_input
+                )
+                tool_latency_ms = int((time.time() - tool_start) * 1000)
+
+                tool_trace.append(
+                    {
+                        "tool_name": decision.tool_name,
+                        "tool_input": decision.tool_input,
+                        "tool_output": tool_output,
+                        "latency_ms": tool_latency_ms,
+                        "success": True,
+                        "error": None,
+                    }
+                )
+
+                citations = tool_output.get("citations", [])
+
+                tool_result_text = json.dumps(tool_output, ensure_ascii=False, indent=2)
+                answer = self._llm_service.generate_final_answer(
+                    user_message=message,
+                    tool_result=tool_result_text
+                )
+
+            except Exception as e:
+                tool_latency_ms = int((time.time() - tool_start) * 1000)
+
+                tool_trace.append(
+                    {
+                        "tool_name": decision.tool_name,
+                        "tool_input": decision.tool_input,
+                        "tool_output": {},
+                        "latency_ms": tool_latency_ms,
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
+                answer = self._llm_service.generate_final_answer(
+                    user_message=message,
+                    tool_result=f"Tool execution failed: {str(e)}"
+                )
+        else:
+            answer = self._llm_service.generate_final_answer(
+                user_message=message
+            )
 
         latency_ms = int((time.time() - start_time) * 1000)
-
-        citations: List[Dict[str, Any]] = [
-            {
-                "source": chunk.metadata.get("source"),
-                "file_name": chunk.metadata.get("file_name"),
-                "chunk_index": chunk.metadata.get("chunk_index"),
-            }
-            for chunk in retrieved_chunks
-        ]
 
         return {
             "answer": answer,
@@ -43,9 +90,10 @@ class Orchestrator:
                 "model": MODEL_NAME,
                 "latency_ms": latency_ms,
                 "session_id": session_id,
-                "route": "rag",
+                "route": route,
                 "response_type": "final",
+                "tool_decision_reason": decision.reason,
             },
-            "tool_trace": [],
+            "tool_trace": tool_trace,
             "citations": citations,
         }
