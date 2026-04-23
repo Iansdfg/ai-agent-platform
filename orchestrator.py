@@ -1,0 +1,51 @@
+import time
+from typing import Any, Dict, List
+
+from core.config import MODEL_NAME, VECTOR_STORE_PATH
+from rag.retriever import Retriever
+from services.llm_service import LLMService
+
+
+class Orchestrator:
+    def __init__(self) -> None:
+        self._llm_service = LLMService()
+        self._retriever = Retriever(VECTOR_STORE_PATH)
+
+    def handle_chat(self, message: str, request_id: str, session_id: str | None = None) -> Dict[str, Any]:
+        start_time = time.time()
+
+        retrieved_chunks = self._retriever.retrieve(message, top_k=3)
+
+        retrieved_context = "\n\n".join(
+            [chunk.content for chunk in retrieved_chunks]
+        )
+
+        answer = self._llm_service.generate_response(
+            message,
+            retrieved_context=retrieved_context
+        )
+
+        latency_ms = int((time.time() - start_time) * 1000)
+
+        citations: List[Dict[str, Any]] = [
+            {
+                "source": chunk.metadata.get("source"),
+                "file_name": chunk.metadata.get("file_name"),
+                "chunk_index": chunk.metadata.get("chunk_index"),
+            }
+            for chunk in retrieved_chunks
+        ]
+
+        return {
+            "answer": answer,
+            "metadata": {
+                "request_id": request_id,
+                "model": MODEL_NAME,
+                "latency_ms": latency_ms,
+                "session_id": session_id,
+                "route": "rag",
+                "response_type": "final",
+            },
+            "tool_trace": [],
+            "citations": citations,
+        }

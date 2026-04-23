@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual env
+venv/
+.venv/
+ai-env/
+
+# Secrets
+.env
+
+# Vector store / local generated data
+rag_store/
+*.faiss
+*.pkl
+
+# Logs / OS / IDE
+*.log
+.DS_Store
+.vscode/
+.idea/
