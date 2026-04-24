@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 
 @dataclass
-class Document:
+class SourceDocument:
     content: str
     metadata: Dict[str, Any]
 
@@ -12,20 +12,19 @@ class Document:
 class DocumentLoader:
     SUPPORTED_EXTENSIONS = {".txt", ".md"}
 
-    def load_documents(self, docs_dir: str) -> List[Document]:
-        documents: List[Document] = []
+    def load_documents(self, docs_dir: str) -> List[SourceDocument]:
+        documents: List[SourceDocument] = []
 
         for file_path in Path(docs_dir).glob("*"):
             if file_path.suffix not in self.SUPPORTED_EXTENSIONS:
                 continue
 
             content = file_path.read_text(encoding="utf-8").strip()
-
             if not content:
                 continue
 
             documents.append(
-                Document(
+                SourceDocument(
                     content=content,
                     metadata={
                         "source": str(file_path),
