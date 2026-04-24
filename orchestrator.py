@@ -1,15 +1,15 @@
 import time
 from typing import Any, Dict, List
 
+from chains.rag_chain import build_rag_chain
 from core.config import MODEL_NAME, VECTOR_STORE_PATH
 from rag.retriever import Retriever
-from services.llm_service import LLMService
 
 
 class Orchestrator:
     def __init__(self) -> None:
-        self._llm_service = LLMService()
         self._retriever = Retriever(VECTOR_STORE_PATH)
+        self._rag_chain = build_rag_chain()
 
     def handle_chat(
         self,
@@ -40,9 +40,11 @@ class Orchestrator:
                 "do not contain enough information."
             )
 
-        answer = self._llm_service.generate_response(
-            message,
-            retrieved_context=retrieved_context,
+        answer = self._rag_chain.invoke(
+            {
+                "question": message,
+                "context": retrieved_context,
+            }
         )
 
         citations: List[Dict[str, Any]] = [
@@ -64,7 +66,7 @@ class Orchestrator:
                 "model": MODEL_NAME,
                 "latency_ms": latency_ms,
                 "session_id": session_id,
-                "route": "rag",
+                "route": "langchain_rag",
                 "response_type": "final",
                 "top_k": 3,
                 "retrieval_hit": retrieval_hit,
