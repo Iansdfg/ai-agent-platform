@@ -1,27 +1,30 @@
-from typing import Dict, Any
+from typing import Dict, List
 
-from tools.search_docs import SearchDocsTool
+from tools.base import BaseTool, ToolResult
+from tools.learning_notes_tool import LearningNotesTool
 
 
 class ToolRegistry:
     def __init__(self) -> None:
-        self._tools = {
-            "search_docs": SearchDocsTool(),
-        }
+        self._tools: Dict[str, BaseTool] = {}
 
-    def list_tools(self) -> list[dict[str, Any]]:
-        return [
-            {
-                "name": tool.name,
-                "description": tool.description,
-            }
-            for tool in self._tools.values()
-        ]
+    def register(self, tool: BaseTool) -> None:
+        self._tools[tool.name] = tool
 
-    def has_tool(self, name: str) -> bool:
-        return name in self._tools
-
-    def execute(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    def get(self, tool_name: str) -> BaseTool:
         if tool_name not in self._tools:
-            raise ValueError(f"Unknown tool: {tool_name}")
-        return self._tools[tool_name].run(**tool_input)
+            raise ValueError(f"Tool not found: {tool_name}")
+        return self._tools[tool_name]
+
+    def list_tools(self) -> List[dict]:
+        return [tool.to_schema() for tool in self._tools.values()]
+
+    def execute(self, tool_name: str, tool_input: dict) -> ToolResult:
+        tool = self.get(tool_name)
+        return tool.run(tool_input)
+
+
+def build_default_registry() -> ToolRegistry:
+    registry = ToolRegistry()
+    registry.register(LearningNotesTool())
+    return registry
