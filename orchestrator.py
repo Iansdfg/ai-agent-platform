@@ -2,13 +2,13 @@ import time
 from typing import Any, Dict, List
 
 from chains.rag_chain import build_rag_chain
-from core.config import MODEL_NAME, VECTOR_STORE_PATH
+from core.config import MODEL_NAME
 from rag.retriever import Retriever
 
 
 class Orchestrator:
     def __init__(self) -> None:
-        self._retriever = Retriever(VECTOR_STORE_PATH)
+        self._retriever = Retriever()
         self._rag_chain = build_rag_chain()
 
     def handle_chat(

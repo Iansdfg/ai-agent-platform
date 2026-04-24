@@ -1,5 +1,46 @@
-Our store sells pet apparel, accessories, and gifts.
+Product FAQ
 
-Shipping usually takes 3-5 business days.
+Q: What food is best for puppies?
+A: Puppies require high-quality puppy food that is rich in protein, healthy fats, and essential nutrients. Look for food labeled specifically for puppies, as it supports their growth and development.
 
-Customers can contact support at support@pawsandpride.com.
+Q: How often should I feed my dog?
+A: Puppies should be fed 3–4 times a day, while adult dogs typically require 2 meals per day. Feeding schedules may vary depending on breed and size.
+
+Q: Do you offer international shipping?
+A: Yes, we offer international shipping to select countries. Shipping fees and delivery times vary depending on location.
+
+Q: How long does shipping take?
+A: Standard shipping typically takes 3–7 business days. Expedited shipping options are available at checkout.
+
+Q: Can I change or cancel my order?
+A: Orders can be modified or canceled within 1 hour of placement. After that, the order may already be processed.
+
+Q: What is your return policy?
+A: We accept returns within 30 days of delivery for eligible items. Items must be unused and in original packaging.
+
+Q: Are your products safe for pets?
+A: Yes, all our products are tested for safety and comply with industry standards.
+
+Q: Do you offer discounts?
+A: We occasionally offer promotions and discounts. Subscribe to our newsletter to stay updated.
+
+Q: What payment methods do you accept?
+A: We accept major credit cards, PayPal, and Apple Pay.
+
+Q: How can I contact customer support?
+A: You can reach us at support@example.com or through our website contact form.
+
+Q: Do you have a warranty?
+A: Some products come with a manufacturer warranty. Please check the product page for details.
+
+Q: What if I receive a damaged product?
+A: Contact us immediately with photos, and we will arrange a replacement or refund.
+
+Q: Can I track my order?
+A: Yes, tracking information will be provided once your order ships.
+
+Q: Are there any items that cannot be returned?
+A: Yes, perishable goods, personalized items, and gift cards are non-returnable.
+
+Q: Do you ship on weekends?
+A: Orders are processed on business days only. Weekend orders are processed on Monday.
