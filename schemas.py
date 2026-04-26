@@ -29,3 +29,12 @@ class ToolTraceItem(BaseModel):
     latency_ms: int = 0
     success: bool = True
     error: Optional[str] = None
+
+
+class RouteDecision(BaseModel):
+    route: str  # "rag" | "tool" | "direct"
+    reason: str = ""
+    confidence: float = 0.0
+    matched_rules: List[str] = Field(default_factory=list)
+    tool_name: Optional[str] = None
+    tool_input: Dict[str, Any] = Field(default_factory=dict)

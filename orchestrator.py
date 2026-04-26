@@ -5,14 +5,17 @@ from chains.rag_chain import build_rag_chain
 from core.config import MODEL_NAME
 from core.tracing import build_trace_item, duration_ms, write_trace_log
 from rag.retriever import Retriever
+from router import QueryRouter
+from tools.registry import build_default_registry
 
 
 class Orchestrator:
     def __init__(self) -> None:
         self._retriever = Retriever()
         self._rag_chain = build_rag_chain()
+        self._router = QueryRouter()
+        self._tool_registry = build_default_registry()
 
-        # Day 13: MVP in-memory short-term memory
         # session_id -> [{"role": "user", "content": "..."}, ...]
         self._memory: Dict[str, List[Dict[str, str]]] = {}
 
@@ -35,19 +38,16 @@ class Orchestrator:
             }
         )
 
-        # Keep only latest 10 messages to avoid prompt growing forever
         self._memory[session_id] = self._memory[session_id][-10:]
 
     def _format_history(self, history: List[Dict[str, str]]) -> str:
         if not history:
             return "No previous conversation history."
 
-        recent_history = history[-6:]
-
         return "\n".join(
             [
                 f"{msg['role']}: {msg['content']}"
-                for msg in recent_history
+                for msg in history[-6:]
             ]
         )
 
@@ -63,7 +63,221 @@ class Orchestrator:
         history = self._get_history(session_id)
         history_text = self._format_history(history)
 
-        # Step 1: Retrieval
+        # Step 1: Router
+        routing_start = time.time()
+
+        route_decision = self._router.route(
+            query=message,
+            history=history,
+        )
+
+        tool_trace.append(
+            build_trace_item(
+                step="routing",
+                name="query_router",
+                input_data={
+                    "query": message,
+                    "session_id": session_id,
+                    "history_message_count": len(history),
+                },
+                output_data=route_decision.model_dump(),
+                latency_ms=duration_ms(routing_start),
+                success=True,
+            )
+        )
+
+        # Step 2A: Tool route
+        if route_decision.route == "tool":
+            tool_start = time.time()
+
+            try:
+                if not route_decision.tool_name:
+                    raise ValueError("Router selected tool route but tool_name is missing.")
+
+                tool_result = self._tool_registry.execute(
+                    route_decision.tool_name,
+                    route_decision.tool_input,
+                )
+
+                tool_latency_ms = duration_ms(tool_start)
+
+                tool_trace.append(
+                    build_trace_item(
+                        step="tool_execution",
+                        name=route_decision.tool_name,
+                        input_data=route_decision.tool_input,
+                        output_data={
+                            "success": tool_result.success,
+                            "output": tool_result.output,
+                            "error": tool_result.error,
+                        },
+                        latency_ms=tool_latency_ms,
+                        success=tool_result.success,
+                        error=tool_result.error,
+                    )
+                )
+
+                if tool_result.success:
+                    answer = (
+                        f"Tool `{route_decision.tool_name}` executed successfully.\n\n"
+                        f"Result:\n{tool_result.output}"
+                    )
+                else:
+                    answer = (
+                        f"Tool `{route_decision.tool_name}` failed: "
+                        f"{tool_result.error}"
+                    )
+
+            except Exception as e:
+                answer = f"Tool execution failed: {str(e)}"
+
+                tool_trace.append(
+                    build_trace_item(
+                        step="tool_execution",
+                        name=route_decision.tool_name or "unknown_tool",
+                        input_data=route_decision.tool_input,
+                        output_data={},
+                        latency_ms=duration_ms(tool_start),
+                        success=False,
+                        error=str(e),
+                    )
+                )
+
+            self._append_history(session_id, "user", message)
+            self._append_history(session_id, "assistant", answer)
+
+            result = {
+                "answer": answer,
+                "metadata": {
+                    "request_id": request_id,
+                    "model": MODEL_NAME,
+                    "latency_ms": duration_ms(total_start),
+                    "session_id": session_id,
+                    "route": "tool",
+                    "router_reason": route_decision.reason,
+                    "router_confidence": route_decision.confidence,
+                    "tool_name": route_decision.tool_name,
+                    "response_type": "final",
+                    "trace_count": len(tool_trace),
+                    "memory_enabled": session_id is not None,
+                    "history_message_count_before": len(history),
+                    "history_message_count_after": len(self._get_history(session_id)),
+                },
+                "tool_trace": tool_trace,
+                "citations": [],
+            }
+
+            write_trace_log(
+                {
+                    "event": "agent_request_completed",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "message": message,
+                    "metadata": result["metadata"],
+                    "tool_trace": tool_trace,
+                }
+            )
+
+            return result
+
+        # Step 2B: Direct route
+        if route_decision.route == "direct":
+            llm_start = time.time()
+
+            try:
+                direct_question = (
+                    f"Conversation history:\n{history_text}\n\n"
+                    f"Current user question:\n{message}"
+                )
+
+                answer = self._rag_chain.invoke(
+                    {
+                        "question": direct_question,
+                        "context": (
+                            "No retrieval is needed for this query. "
+                            "Answer directly and concisely."
+                        ),
+                    }
+                )
+
+                tool_trace.append(
+                    build_trace_item(
+                        step="generation",
+                        name="direct_llm",
+                        input_data={
+                            "question": message,
+                            "session_id": session_id,
+                            "history_message_count": len(history),
+                            "model": MODEL_NAME,
+                        },
+                        output_data={
+                            "answer_chars": len(str(answer)),
+                        },
+                        latency_ms=duration_ms(llm_start),
+                        success=True,
+                    )
+                )
+
+            except Exception as e:
+                answer = (
+                    "Sorry, I failed to generate a direct answer because "
+                    "the LLM chain raised an error."
+                )
+
+                tool_trace.append(
+                    build_trace_item(
+                        step="generation",
+                        name="direct_llm",
+                        input_data={
+                            "question": message,
+                            "session_id": session_id,
+                            "history_message_count": len(history),
+                            "model": MODEL_NAME,
+                        },
+                        output_data={},
+                        latency_ms=duration_ms(llm_start),
+                        success=False,
+                        error=str(e),
+                    )
+                )
+
+            self._append_history(session_id, "user", message)
+            self._append_history(session_id, "assistant", str(answer))
+
+            result = {
+                "answer": answer,
+                "metadata": {
+                    "request_id": request_id,
+                    "model": MODEL_NAME,
+                    "latency_ms": duration_ms(total_start),
+                    "session_id": session_id,
+                    "route": "direct",
+                    "router_reason": route_decision.reason,
+                    "router_confidence": route_decision.confidence,
+                    "response_type": "final",
+                    "trace_count": len(tool_trace),
+                    "memory_enabled": session_id is not None,
+                    "history_message_count_before": len(history),
+                    "history_message_count_after": len(self._get_history(session_id)),
+                },
+                "tool_trace": tool_trace,
+                "citations": [],
+            }
+
+            write_trace_log(
+                {
+                    "event": "agent_request_completed",
+                    "request_id": request_id,
+                    "session_id": session_id,
+                    "message": message,
+                    "metadata": result["metadata"],
+                    "tool_trace": tool_trace,
+                }
+            )
+
+            return result
+
+        # Step 2C: RAG route
         retrieval_start = time.time()
 
         try:
@@ -122,7 +336,6 @@ class Orchestrator:
                 )
             )
 
-        # Step 2: Build RAG context
         if retrieval_hit:
             retrieved_context = "\n\n".join(
                 [
@@ -146,7 +359,6 @@ class Orchestrator:
             f"Current user question:\n{message}"
         )
 
-        # Step 3: LLM generation
         llm_start = time.time()
 
         try:
@@ -156,8 +368,6 @@ class Orchestrator:
                     "context": retrieved_context,
                 }
             )
-
-            llm_latency_ms = duration_ms(llm_start)
 
             tool_trace.append(
                 build_trace_item(
@@ -173,15 +383,15 @@ class Orchestrator:
                     output_data={
                         "answer_chars": len(str(answer)),
                     },
-                    latency_ms=llm_latency_ms,
+                    latency_ms=duration_ms(llm_start),
                     success=True,
                 )
             )
 
         except Exception as e:
-            llm_latency_ms = duration_ms(llm_start)
             answer = (
-                "Sorry, I failed to generate an answer because the LLM chain raised an error."
+                "Sorry, I failed to generate an answer because "
+                "the LLM chain raised an error."
             )
 
             tool_trace.append(
@@ -196,13 +406,12 @@ class Orchestrator:
                         "model": MODEL_NAME,
                     },
                     output_data={},
-                    latency_ms=llm_latency_ms,
+                    latency_ms=duration_ms(llm_start),
                     success=False,
                     error=str(e),
                 )
             )
 
-        # Step 4: Save memory
         self._append_history(session_id, "user", message)
         self._append_history(session_id, "assistant", str(answer))
 
@@ -216,16 +425,16 @@ class Orchestrator:
             for chunk in retrieved_chunks
         ]
 
-        total_latency_ms = duration_ms(total_start)
-
         result = {
             "answer": answer,
             "metadata": {
                 "request_id": request_id,
                 "model": MODEL_NAME,
-                "latency_ms": total_latency_ms,
+                "latency_ms": duration_ms(total_start),
                 "session_id": session_id,
-                "route": "langchain_rag_with_memory",
+                "route": "rag",
+                "router_reason": route_decision.reason,
+                "router_confidence": route_decision.confidence,
                 "response_type": "final",
                 "top_k": 3,
                 "retrieval_hit": retrieval_hit,
