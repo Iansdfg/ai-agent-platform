@@ -1,9 +1,11 @@
 from typing import Dict, List
 
 from tools.base import BaseTool, ToolResult
+from tools.draft_tool import CreateDraftTool, GetDraftTool, UpdateDraftTool
+from tools.http_tool import HttpTool
 from tools.learning_notes_tool import LearningNotesTool
 from tools.search_tool import SearchTool
-from tools.http_tool import HttpTool
+
 
 class ToolRegistry:
     def __init__(self) -> None:
@@ -30,4 +32,10 @@ def build_default_registry() -> ToolRegistry:
     registry.register(LearningNotesTool())
     registry.register(SearchTool())
     registry.register(HttpTool())
+
+    # Draft persistence tools
+    registry.register(CreateDraftTool())
+    registry.register(GetDraftTool())
+    registry.register(UpdateDraftTool())
+
     return registry

@@ -1,11 +1,23 @@
-from fastapi import FastAPI
-from schemas import ChatRequest, ChatResponse
-from core.config import APP_NAME
-from orchestrator import Orchestrator
 import uuid
+
+from fastapi import FastAPI
+
+from core.config import APP_NAME
+from core.tracing import write_trace_log
+from db import init_db
+from orchestrator import Orchestrator
+from schemas import ChatRequest, ChatResponse
+from tools.registry import build_default_registry
+
 
 app = FastAPI(title=APP_NAME)
 orchestrator = Orchestrator()
+tool_registry = build_default_registry()
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
 
 
 @app.get("/")
@@ -13,29 +25,49 @@ def healthcheck():
     return {"status": "ok", "app": APP_NAME}
 
 
+@app.get("/tools")
+def list_tools():
+    return {"tools": tool_registry.list_tools()}
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     request_id = str(uuid.uuid4())
 
-    print({
-        "event": "request_received",
-        "request_id": request_id,
-        "route": "/chat",
-        "message": req.message,
-        "session_id": req.session_id,
-    })
+    write_trace_log(
+        {
+            "event": "request_received",
+            "request_id": request_id,
+            "route": "/chat",
+            "session_id": req.session_id,
+            "message": req.message,
+        }
+    )
 
     result = orchestrator.handle_chat(
         message=req.message,
         request_id=request_id,
-        session_id=req.session_id
+        session_id=req.session_id,
     )
 
-    print({
-        "event": "request_completed",
-        "request_id": request_id,
-        "route": "/chat",
-        "metadata": result["metadata"],
-    })
+    write_trace_log(
+        {
+            "event": "request_completed",
+            "request_id": request_id,
+            "route": "/chat",
+            "metadata": result["metadata"],
+        }
+    )
 
     return ChatResponse(**result)
+
+
+@app.post("/tools/{tool_name}")
+def execute_tool(tool_name: str, tool_input: dict):
+    result = tool_registry.execute(tool_name, tool_input)
+
+    return {
+        "success": result.success,
+        "output": result.output,
+        "error": result.error,
+    }
