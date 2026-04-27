@@ -2,16 +2,15 @@ import uuid
 
 from fastapi import FastAPI
 
+from agent_graph import agent_graph
 from core.config import APP_NAME
 from core.tracing import write_trace_log
 from db import init_db
-from orchestrator import Orchestrator
 from schemas import ChatRequest, ChatResponse
 from tools.registry import build_default_registry
 
 
 app = FastAPI(title=APP_NAME)
-orchestrator = Orchestrator()
 tool_registry = build_default_registry()
 
 
@@ -44,7 +43,7 @@ def chat(req: ChatRequest):
         }
     )
 
-    result = orchestrator.handle_chat(
+    result = agent_graph.invoke(
         message=req.message,
         request_id=request_id,
         session_id=req.session_id,
