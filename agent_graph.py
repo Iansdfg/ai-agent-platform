@@ -1,7 +1,9 @@
+import json
 import re
 import time
 from typing import Any, Dict, List
 
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 
 from chains.rag_chain import build_rag_chain
@@ -13,6 +15,7 @@ from tools.registry import build_default_registry
 
 
 MAX_STEPS = 3
+ALLOWED_ACTIONS = {"retrieval", "tool", "answer"}
 
 
 class AgentGraph:
@@ -20,6 +23,10 @@ class AgentGraph:
         self._retriever = Retriever()
         self._rag_chain = build_rag_chain()
         self._tool_registry = build_default_registry()
+
+        # Hybrid planner: use LLM only when rules are not confident.
+        self._planner_llm = ChatOpenAI(model=MODEL_NAME, temperature=0)
+
         self._graph = self._build_graph()
 
     def invoke(
@@ -37,7 +44,10 @@ class AgentGraph:
                 "next_action": "",
                 "step_count": 0,
                 "max_steps": MAX_STEPS,
+                "planner_type": "",
+                "planner_reason": "",
                 "documents": [],
+                "retrieved_context": "",
                 "tool_result": {},
                 "intermediate_results": [],
                 "tool_trace": [],
@@ -93,7 +103,6 @@ class AgentGraph:
     def _router_node(self, state: AgentState) -> AgentState:
         message = state["message"].lower()
 
-        # Direct guardrail: obvious out-of-scope questions.
         if any(
             word in message
             for word in [
@@ -104,6 +113,7 @@ class AgentGraph:
                 "天气",
                 "股票",
                 "比赛",
+                "餐厅",
             ]
         ):
             route = "direct"
@@ -129,47 +139,85 @@ class AgentGraph:
         return state.get("route", "agent")
 
     def _planner_node(self, state: AgentState) -> AgentState:
+        start = time.time()
+
         step_count = int(state.get("step_count", 0))
         max_steps = int(state.get("max_steps", MAX_STEPS))
-        message = state["message"].lower()
+        message = state["message"]
+
+        has_documents = bool(state.get("documents"))
+        has_tool_result = bool(state.get("tool_result"))
 
         if step_count >= max_steps:
             next_action = "answer"
             reason = "max_steps_reached"
+            planner_type = "rule"
 
-        elif self._needs_tool(message) and not state.get("tool_result"):
+        elif self._high_confidence_tool_request(message) and not has_tool_result:
             next_action = "tool"
-            reason = "tool_required"
+            reason = "high_confidence_tool_request"
+            planner_type = "rule"
 
-        elif self._needs_retrieval(message) and not state.get("documents"):
+        elif self._high_confidence_retrieval_request(message) and not has_documents:
             next_action = "retrieval"
-            reason = "retrieval_required"
+            reason = "high_confidence_retrieval_request"
+            planner_type = "rule"
 
         else:
-            next_action = "answer"
-            reason = "enough_context_to_answer"
+            decision = self._llm_plan_next_action(
+                message=message,
+                step_count=step_count,
+                max_steps=max_steps,
+                has_documents=has_documents,
+                has_tool_result=has_tool_result,
+                intermediate_results=state.get("intermediate_results", []),
+            )
+
+            next_action = decision.get("next_action", "answer")
+            reason = decision.get("reason", "llm_planner_decision")
+            planner_type = "llm"
+
+            if next_action not in ALLOWED_ACTIONS:
+                next_action = "answer"
+                reason = "invalid_llm_action_fallback_to_answer"
+
+            if next_action == "retrieval" and has_documents:
+                next_action = "answer"
+                reason = "llm_requested_duplicate_retrieval_fallback_to_answer"
+
+            if next_action == "tool" and has_tool_result:
+                next_action = "answer"
+                reason = "llm_requested_duplicate_tool_fallback_to_answer"
+
+        latency_ms = duration_ms(start)
 
         trace_item = build_trace_item(
             step="planning",
-            name="planner_node",
+            name="hybrid_planner_node",
             input_data={
-                "message": state["message"],
+                "message": message,
                 "step_count": step_count,
                 "max_steps": max_steps,
-                "has_documents": bool(state.get("documents")),
-                "has_tool_result": bool(state.get("tool_result")),
+                "has_documents": has_documents,
+                "has_tool_result": has_tool_result,
+                "intermediate_results_count": len(
+                    state.get("intermediate_results", [])
+                ),
             },
             output_data={
                 "next_action": next_action,
                 "reason": reason,
+                "planner_type": planner_type,
             },
-            latency_ms=0,
+            latency_ms=latency_ms,
             success=True,
         )
 
         return {
             **state,
             "next_action": next_action,
+            "planner_type": planner_type,
+            "planner_reason": reason,
             "tool_trace": state.get("tool_trace", []) + [trace_item],
         }
 
@@ -182,16 +230,28 @@ class AgentGraph:
         session_id = state.get("session_id")
 
         try:
-            retrieved_chunks = self._retriever.retrieve(message, top_k=3)
+            retrieved_chunks = self._retriever.retrieve(message, top_k=6)
+
+            seen = set()
+            unique_chunks = []
+
+            for chunk in retrieved_chunks:
+                key = chunk.content.strip()
+                if key not in seen:
+                    seen.add(key)
+                    unique_chunks.append(chunk)
+
+            unique_chunks = unique_chunks[:3]
+
             latency_ms = duration_ms(start)
-            retrieval_hit = len(retrieved_chunks) > 0
+            retrieval_hit = len(unique_chunks) > 0
 
             documents: List[Dict[str, Any]] = [
                 {
                     "content": chunk.content,
                     "metadata": chunk.metadata,
                 }
-                for chunk in retrieved_chunks
+                for chunk in unique_chunks
             ]
 
             citations: List[Dict[str, Any]] = [
@@ -201,7 +261,7 @@ class AgentGraph:
                     "chunk_index": chunk.metadata.get("chunk_index"),
                     "snippet": chunk.content[:300],
                 }
-                for chunk in retrieved_chunks
+                for chunk in unique_chunks
             ]
 
             if retrieval_hit:
@@ -212,7 +272,7 @@ class AgentGraph:
                         f"source: {chunk.metadata.get('source')}\n"
                         f"chunk_index: {chunk.metadata.get('chunk_index')}\n"
                         f"content:\n{chunk.content}"
-                        for index, chunk in enumerate(retrieved_chunks)
+                        for index, chunk in enumerate(unique_chunks)
                     ]
                 )
             else:
@@ -226,11 +286,13 @@ class AgentGraph:
                 input_data={
                     "query": message,
                     "session_id": session_id,
-                    "top_k": 3,
+                    "top_k": 6,
+                    "deduped_top_k": 3,
                 },
                 output_data={
                     "retrieval_hit": retrieval_hit,
-                    "retrieved_chunk_count": len(retrieved_chunks),
+                    "retrieved_chunk_count": len(unique_chunks),
+                    "raw_retrieved_chunk_count": len(retrieved_chunks),
                 },
                 latency_ms=latency_ms,
                 success=True,
@@ -239,7 +301,7 @@ class AgentGraph:
             intermediate_result = {
                 "step": "retrieval",
                 "retrieval_hit": retrieval_hit,
-                "retrieved_chunk_count": len(retrieved_chunks),
+                "retrieved_chunk_count": len(unique_chunks),
             }
 
             return {
@@ -262,7 +324,7 @@ class AgentGraph:
                 input_data={
                     "query": message,
                     "session_id": session_id,
-                    "top_k": 3,
+                    "top_k": 6,
                 },
                 output_data={},
                 latency_ms=latency_ms,
@@ -374,22 +436,22 @@ class AgentGraph:
             context = "\n\n".join(context_parts)
 
             prompt = f"""
-                    You are Market Brain Agent.
+You are Market Brain Agent.
 
-                    Use the available context to answer the user.
+Use the available context to answer the user.
 
-                    Rules:
-                    1. If retrieved documents are provided, cite them using [1], [2], etc.
-                    2. If a tool result is provided, summarize the tool result clearly.
-                    3. If context is insufficient, say what is missing.
-                    4. Do not invent facts.
+Rules:
+1. If retrieved documents are provided, cite them using [1], [2], etc.
+2. If a tool result is provided, summarize the tool result clearly.
+3. If context is insufficient, say what is missing.
+4. Do not invent facts.
 
-                    User question:
-                    {message}
+User question:
+{message}
 
-                    Context:
-                    {context}
-                    """
+Context:
+{context}
+"""
 
             answer = self._rag_chain.invoke(
                 {
@@ -409,6 +471,8 @@ class AgentGraph:
                     "step_count": state.get("step_count", 0),
                     "has_documents": bool(docs),
                     "has_tool_result": bool(tool_result),
+                    "planner_type": state.get("planner_type"),
+                    "planner_reason": state.get("planner_reason"),
                 },
                 output_data={
                     "answer_chars": len(str(answer)),
@@ -424,12 +488,14 @@ class AgentGraph:
                 "model": MODEL_NAME,
                 "latency_ms": self._sum_trace_latency(traces),
                 "session_id": state.get("session_id"),
-                "route": "langgraph_multistep_agent",
+                "route": "langgraph_hybrid_multistep_agent",
                 "graph_node": "answer",
                 "response_type": "final",
                 "step_count": state.get("step_count", 0),
                 "max_steps": state.get("max_steps", MAX_STEPS),
                 "next_action": state.get("next_action"),
+                "planner_type": state.get("planner_type"),
+                "planner_reason": state.get("planner_reason"),
                 "retrieved_chunk_count": len(docs),
                 "retrieval_hit": len(docs) > 0,
                 "has_tool_result": bool(tool_result),
@@ -469,11 +535,13 @@ class AgentGraph:
                     "model": MODEL_NAME,
                     "latency_ms": self._sum_trace_latency(traces),
                     "session_id": state.get("session_id"),
-                    "route": "langgraph_multistep_agent",
+                    "route": "langgraph_hybrid_multistep_agent",
                     "graph_node": "answer",
                     "response_type": "final",
                     "step_count": state.get("step_count", 0),
                     "max_steps": state.get("max_steps", MAX_STEPS),
+                    "planner_type": state.get("planner_type"),
+                    "planner_reason": state.get("planner_reason"),
                     "trace_count": len(traces),
                 },
                 "tool_trace": traces,
@@ -510,39 +578,119 @@ class AgentGraph:
             "citations": [],
         }
 
-    def _needs_tool(self, message: str) -> bool:
+    def _high_confidence_tool_request(self, message: str) -> bool:
+        lower = message.lower()
+
         return any(
-            keyword in message
+            keyword in lower
             for keyword in [
-                "draft",
-                "campaign",
-                "update",
-                "edit",
-                "草稿",
-                "营销",
-                "修改",
-                "生成",
+                "create draft",
+                "update draft",
+                "get draft",
+                "edit draft",
+                "save draft",
+                "create campaign",
+                "generate campaign",
+                "生成草稿",
+                "创建草稿",
+                "修改草稿",
+                "查看草稿",
+                "生成营销",
             ]
         )
 
-    def _needs_retrieval(self, message: str) -> bool:
+    def _high_confidence_retrieval_request(self, message: str) -> bool:
+        lower = message.lower()
+
         return any(
-            keyword in message
+            keyword in lower
             for keyword in [
-                "rag",
-                "doc",
-                "document",
+                "explain from docs",
+                "according to docs",
+                "based on documents",
+                "what does the doc say",
                 "policy",
-                "explain",
-                "how",
-                "what",
-                "为什么",
-                "如何",
-                "怎么",
-                "解释",
-                "项目",
+                "documentation",
+                "根据文档",
+                "文档里",
+                "解释一下",
             ]
         )
+
+    def _llm_plan_next_action(
+        self,
+        message: str,
+        step_count: int,
+        max_steps: int,
+        has_documents: bool,
+        has_tool_result: bool,
+        intermediate_results: list,
+    ) -> Dict[str, Any]:
+        prompt = f"""
+You are the planner for Market Brain Agent.
+
+Your job is to decide the next action.
+
+Allowed actions:
+- "retrieval": use this when the agent needs project documents, policies, RAG context, or knowledge lookup.
+- "tool": use this when the agent needs to create, get, update, save, or operate on marketing drafts/campaign artifacts.
+- "answer": use this when enough context/tool result exists or the request can be answered directly.
+
+Rules:
+1. Return ONLY valid JSON.
+2. Do not include markdown.
+3. Do not choose retrieval if has_documents is true.
+4. Do not choose tool if has_tool_result is true.
+5. If step_count >= max_steps, choose answer.
+6. If the request is compound, choose the missing step first.
+7. Allowed next_action values are only: retrieval, tool, answer.
+
+Current state:
+- user_message: {message}
+- step_count: {step_count}
+- max_steps: {max_steps}
+- has_documents: {has_documents}
+- has_tool_result: {has_tool_result}
+- intermediate_results: {intermediate_results}
+
+Return JSON format:
+{{
+  "next_action": "retrieval",
+  "reason": "short reason"
+}}
+"""
+
+        try:
+            response = self._planner_llm.invoke(prompt)
+            content = response.content if hasattr(response, "content") else str(response)
+            content = self._strip_markdown_json(content)
+
+            decision = json.loads(content)
+
+            return {
+                "next_action": decision.get("next_action", "answer"),
+                "reason": decision.get("reason", "llm_planner_decision"),
+            }
+
+        except Exception as e:
+            return {
+                "next_action": "answer",
+                "reason": f"llm_planner_failed_fallback_to_answer: {str(e)}",
+            }
+
+    def _strip_markdown_json(self, text: str) -> str:
+        cleaned = text.strip()
+
+        if cleaned.startswith("```json"):
+            cleaned = cleaned.removeprefix("```json").strip()
+
+        if cleaned.startswith("```"):
+            cleaned = cleaned.removeprefix("```").strip()
+
+        if cleaned.endswith("```"):
+            cleaned = cleaned.removesuffix("```").strip()
+
+        return cleaned
 
     def _select_tool(self, message: str) -> tuple[str, Dict[str, Any]]:
         lower = message.lower()

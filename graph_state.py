@@ -12,6 +12,9 @@ class AgentState(TypedDict, total=False):
     step_count: int
     max_steps: int
 
+    planner_type: str
+    planner_reason: str
+
     documents: List[Dict[str, Any]]
     retrieved_context: str
     tool_result: Dict[str, Any]
