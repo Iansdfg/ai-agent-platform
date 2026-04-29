@@ -1,8 +1,9 @@
 import uuid
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from agent_graph import agent_graph
+from core.auth import require_api_key
 from core.config import APP_NAME
 from core.tracing import write_trace_log
 from db import init_db
@@ -24,12 +25,12 @@ def healthcheck():
     return {"status": "ok", "app": APP_NAME}
 
 
-@app.get("/tools")
+@app.get("/tools", dependencies=[Depends(require_api_key)])
 def list_tools():
     return {"tools": tool_registry.list_tools()}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
 def chat(req: ChatRequest):
     request_id = str(uuid.uuid4())
 
@@ -61,7 +62,7 @@ def chat(req: ChatRequest):
     return ChatResponse(**result)
 
 
-@app.post("/tools/{tool_name}")
+@app.post("/tools/{tool_name}", dependencies=[Depends(require_api_key)])
 def execute_tool(tool_name: str, tool_input: dict):
     result = tool_registry.execute(tool_name, tool_input)
 
