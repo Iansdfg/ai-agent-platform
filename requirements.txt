@@ -2,8 +2,11 @@ fastapi
 uvicorn
 openai
 langchain
+langchain-openai
+langgraph
 llama-index
 llama-index-vector-stores-postgres
 psycopg2-binary
 sqlalchemy
 python-dotenv
+faiss-cpu
