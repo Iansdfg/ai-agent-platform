@@ -1,0 +1,105 @@
+{
+  "family": "ai-agent-platform-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::347387311652:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "ai-agent-platform",
+      "image": "347387311652.dkr.ecr.us-east-1.amazonaws.com/ai-agent-platform:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ENVIRONMENT",
+          "value": "prod"
+        },
+        {
+          "name": "APP_API_KEY",
+          "value": "dev-secret"
+        },
+        {
+          "name": "DB_HOST",
+          "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com"
+        },
+        {
+          "name": "DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "DB_NAME",
+          "value": "postgres"
+        },
+        {
+          "name": "DB_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "DB_SSLMODE",
+          "value": "require"
+        },
+        {
+          "name": "RAG_DB_HOST",
+          "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com"
+        },
+        {
+          "name": "RAG_DB_PORT",
+          "value": "5432"
+        },
+        {
+          "name": "RAG_DB_NAME",
+          "value": "postgres"
+        },
+        {
+          "name": "RAG_DB_USER",
+          "value": "postgres"
+        },
+        {
+          "name": "RAG_DB_SSLMODE",
+          "value": "require"
+        },
+        {
+          "name": "RAG_TABLE_NAME",
+          "value": "documents"
+        },
+        {
+          "name": "DOCS_DIR",
+          "value": "docs"
+        },
+        {
+          "name": "EMBEDDING_MODEL_NAME",
+          "value": "text-embedding-3-small"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:347387311652:secret:ai-agent-platform/openai-api-key"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:347387311652:secret:ai-agent-platform/db-password"
+        },
+        {
+          "name": "RAG_DB_PASSWORD",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:347387311652:secret:ai-agent-platform/db-password"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-agent-platform",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

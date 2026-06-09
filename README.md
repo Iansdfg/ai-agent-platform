@@ -235,7 +235,7 @@ Development and smoke test scripts.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+make install
 ```
 
 ### 2. Configure environment variables
@@ -245,16 +245,29 @@ Create `.env`:
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 APP_API_KEY=local-dev-key
-DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/agent_platform
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=agent_platform
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_SSLMODE=
 DOCS_DIR=docs
 EMBEDDING_MODEL_NAME=text-embedding-3-small
+RAG_DB_HOST=localhost
+RAG_DB_PORT=5432
+RAG_DB_NAME=rag_db
+RAG_DB_USER=postgres
+RAG_DB_PASSWORD=postgres
+RAG_DB_SSLMODE=
+RAG_TABLE_NAME=documents
 ```
 
 Notes:
 
 - `/chat` and `/tools` are protected by `APP_API_KEY`.
-- Draft persistence uses `DATABASE_URL`; the default database name is `agent_platform`.
-- The RAG vector store currently connects to PostgreSQL database `rag_db`, table `documents`, in `rag/embedding_store.py`.
+- Draft persistence can use either `DATABASE_URL` or the `DB_*` variables above.
+- The RAG vector store uses `RAG_DB_*` variables and defaults to database `rag_db`, table `documents`.
+- For RDS, set `DB_SSLMODE=require` and `RAG_DB_SSLMODE=require` if your database requires SSL.
 
 ### 3. Prepare PostgreSQL
 
@@ -267,10 +280,102 @@ createdb rag_db
 
 If you use Docker or a remote PostgreSQL instance, make sure the connection settings match `db.py` and `rag/embedding_store.py`.
 
+## Docker
+
+### Docker Compose
+
+Run FastAPI and PostgreSQL together:
+
+```bash
+make compose-up
+```
+
+Equivalent command:
+
+```bash
+docker compose up --build
+```
+
+This starts:
+
+- `app`: FastAPI on `http://127.0.0.1:8000`
+- `postgres`: `pgvector/pgvector:pg16` with databases `agent_platform` and `rag_db`
+
+The first Postgres startup runs `docker/postgres/init/01-create-databases.sql`, which creates the RAG database and enables the `vector` extension.
+
+Stop the stack:
+
+```bash
+make compose-down
+```
+
+Tail logs:
+
+```bash
+make compose-logs
+```
+
+Build the RAG index inside the Compose network:
+
+```bash
+make compose-index
+```
+
+If you need to recreate the Postgres volume from scratch:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+### Docker Image
+
+Build the image:
+
+```bash
+docker build -t ai-agent-platform:local .
+```
+
+Run it locally against host PostgreSQL:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e APP_API_KEY=local-dev-key \
+  -e OPENAI_API_KEY=your_openai_api_key \
+  -e DB_HOST=host.docker.internal \
+  -e DB_PORT=5432 \
+  -e DB_NAME=agent_platform \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=postgres \
+  -e RAG_DB_HOST=host.docker.internal \
+  -e RAG_DB_PORT=5432 \
+  -e RAG_DB_NAME=rag_db \
+  -e RAG_DB_USER=postgres \
+  -e RAG_DB_PASSWORD=postgres \
+  ai-agent-platform:local
+```
+
+For ECS Fargate, push this image to Amazon ECR and configure the task definition with:
+
+- Container port: `8000`
+- Health check path on the ALB target group: `/`
+- Environment variables: `ENVIRONMENT`, `APP_API_KEY`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_SSLMODE`, `RAG_DB_HOST`, `RAG_DB_PORT`, `RAG_DB_NAME`, `RAG_DB_USER`, `RAG_DB_SSLMODE`, `RAG_TABLE_NAME`
+- Secrets Manager secrets: `OPENAI_API_KEY`, `DB_PASSWORD`, `RAG_DB_PASSWORD`
+- RDS security group inbound rule allowing traffic from the ECS task security group on port `5432`
+
+If the RDS instance was created without `--db-name`, use the default `postgres` database:
+
+```text
+DB_NAME=postgres
+RAG_DB_NAME=postgres
+```
+
+That lets the app tables and RAG vector table live in the same RDS database. If you later create separate databases, set `DB_NAME` and `RAG_DB_NAME` to those names.
+
 ### 4. Build RAG index
 
 ```bash
-python build_index.py
+make index
 ```
 
 This command reads `docs/`, generates embeddings, and writes them into the PostgreSQL vector store.
@@ -278,13 +383,19 @@ This command reads `docs/`, generates embeddings, and writes them into the Postg
 ### 5. Run API server
 
 ```bash
-uvicorn app:app --reload
+make dev
 ```
 
 Default address:
 
 ```text
 http://127.0.0.1:8000
+```
+
+You can override the host or port when needed:
+
+```bash
+make dev HOST=0.0.0.0 PORT=8080
 ```
 
 ## Usage

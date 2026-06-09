@@ -3,7 +3,19 @@ from llama_index.core import StorageContext, VectorStoreIndex
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 
-from core.config import OPENAI_API_KEY
+from core.config import (
+    EMBEDDING_MODEL_NAME,
+    OPENAI_API_KEY,
+    RAG_DB_HOST,
+    RAG_DB_NAME,
+    RAG_DB_PASSWORD,
+    RAG_DB_PORT,
+    RAG_DB_USER,
+    RAG_EMBED_DIM,
+    RAG_ASYNC_DATABASE_URL,
+    RAG_DATABASE_URL,
+    RAG_TABLE_NAME,
+)
 
 
 class EmbeddingStore:
@@ -12,18 +24,20 @@ class EmbeddingStore:
             raise ValueError("OPENAI_API_KEY is not set")
 
         self._embed_model = OpenAIEmbedding(
-            model="text-embedding-3-small",
+            model=EMBEDDING_MODEL_NAME,
             api_key=OPENAI_API_KEY,
         )
 
         self._vector_store = PGVectorStore.from_params(
-            database="rag_db",
-            host="localhost",
-            password="postgres",
-            port=5432,
-            user="postgres",
-            table_name="documents",
-            embed_dim=1536,
+            connection_string=RAG_DATABASE_URL,
+            async_connection_string=RAG_ASYNC_DATABASE_URL,
+            database=RAG_DB_NAME,
+            host=RAG_DB_HOST,
+            password=RAG_DB_PASSWORD,
+            port=RAG_DB_PORT,
+            user=RAG_DB_USER,
+            table_name=RAG_TABLE_NAME,
+            embed_dim=RAG_EMBED_DIM,
         )
 
         self._storage_context = StorageContext.from_defaults(
