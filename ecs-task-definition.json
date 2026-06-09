@@ -8,7 +8,7 @@
   "containerDefinitions": [
     {
       "name": "ai-agent-platform",
-      "image": "347387311652.dkr.ecr.us-east-1.amazonaws.com/ai-agent-platform:latest",
+      "image": "347387311652.dkr.ecr.us-east-1.amazonaws.com/ai-agent-platform:amd64-20260608203805",
       "essential": true,
       "portMappings": [
         {
@@ -17,66 +17,24 @@
         }
       ],
       "environment": [
-        {
-          "name": "ENVIRONMENT",
-          "value": "prod"
-        },
-        {
-          "name": "APP_API_KEY",
-          "value": "dev-secret"
-        },
-        {
-          "name": "DB_HOST",
-          "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com"
-        },
-        {
-          "name": "DB_PORT",
-          "value": "5432"
-        },
-        {
-          "name": "DB_NAME",
-          "value": "postgres"
-        },
-        {
-          "name": "DB_USER",
-          "value": "postgres"
-        },
-        {
-          "name": "DB_SSLMODE",
-          "value": "require"
-        },
-        {
-          "name": "RAG_DB_HOST",
-          "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com"
-        },
-        {
-          "name": "RAG_DB_PORT",
-          "value": "5432"
-        },
-        {
-          "name": "RAG_DB_NAME",
-          "value": "postgres"
-        },
-        {
-          "name": "RAG_DB_USER",
-          "value": "postgres"
-        },
-        {
-          "name": "RAG_DB_SSLMODE",
-          "value": "require"
-        },
-        {
-          "name": "RAG_TABLE_NAME",
-          "value": "documents"
-        },
-        {
-          "name": "DOCS_DIR",
-          "value": "docs"
-        },
-        {
-          "name": "EMBEDDING_MODEL_NAME",
-          "value": "text-embedding-3-small"
-        }
+        { "name": "ENVIRONMENT", "value": "prod" },
+        { "name": "APP_API_KEY", "value": "dev-secret" },
+
+        { "name": "DB_HOST", "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com" },
+        { "name": "DB_PORT", "value": "5432" },
+        { "name": "DB_NAME", "value": "postgres" },
+        { "name": "DB_USER", "value": "postgres" },
+        { "name": "DB_SSLMODE", "value": "require" },
+
+        { "name": "RAG_DB_HOST", "value": "ai-agent-platform-db.c3wgqma4geuk.us-east-1.rds.amazonaws.com" },
+        { "name": "RAG_DB_PORT", "value": "5432" },
+        { "name": "RAG_DB_NAME", "value": "postgres" },
+        { "name": "RAG_DB_USER", "value": "postgres" },
+        { "name": "RAG_DB_SSLMODE", "value": "require" },
+
+        { "name": "RAG_TABLE_NAME", "value": "documents" },
+        { "name": "DOCS_DIR", "value": "docs" },
+        { "name": "EMBEDDING_MODEL_NAME", "value": "text-embedding-3-small" }
       ],
       "secrets": [
         {

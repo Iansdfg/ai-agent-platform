@@ -282,6 +282,8 @@ If you use Docker or a remote PostgreSQL instance, make sure the connection sett
 
 ## Docker
 
+For the full AWS deployment flow, see [AWS_DEPLOYMENT.md](AWS_DEPLOYMENT.md).
+
 ### Docker Compose
 
 Run FastAPI and PostgreSQL together:
