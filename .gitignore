@@ -18,6 +18,7 @@ rag_store/
 *.pkl
 
 # Logs / OS / IDE
+logs/
 *.log
 .DS_Store
 .vscode/

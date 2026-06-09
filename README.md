@@ -71,10 +71,8 @@ router -> planner -> guardrail -> retrieval -> planner
 ├── rag/
 ├── tools/
 ├── services/
-├── api/
 ├── core/
 ├── memory/
-├── prompts/
 ├── docs/
 ├── scripts/
 ├── requirements.txt
@@ -89,7 +87,7 @@ router -> planner -> guardrail -> retrieval -> planner
 - `agent_graph.py`: a compatibility wrapper that exposes the `agent_graph` singleton and delegates the real implementation to `graphs/market_brain_graph.py`.
 - `build_index.py`: loads documents from `docs/` and writes them into the PostgreSQL vector store.
 - `db.py`: SQLAlchemy engine/session setup and initialization logic for `drafts`, `draft_versions`, and `draft_events`.
-- `schemas.py`: Pydantic schemas for API requests/responses and agent/tool routing.
+- `schemas.py`: Pydantic schemas for API requests and responses.
 - `requirements.txt`: Python dependencies.
 
 ### `graphs/`
@@ -174,7 +172,7 @@ Agent tool system.
 - `registry.py`: registers default tools and provides list/execute helpers.
 - `draft_tool.py`: create/get/update draft tools.
 - `http_tool.py`: HTTP request tool.
-- `search_tool.py`, `search_docs.py`: search tools.
+- `search_tool.py`: search tool.
 - `learning_notes_tool.py`: learning notes example tool.
 
 Typical changes:
@@ -188,27 +186,12 @@ Typical changes:
 Business service layer behind tools.
 
 - `draft_service.py`: draft CRUD, version control, and event logging.
-- `llm_service.py`: example LLM service currently used by `api/routes/chat.py`.
-- `day8_orchestration.py`: earlier orchestration example/exercise code.
 
 Typical changes:
 
 - Change draft persistence behavior.
 - Add business rules, audit records, or workspace isolation.
 - Move complex tool logic into a service.
-
-### `api/`
-
-API route extension layer.
-
-- `api/routes/chat.py` is a router example for LLM-only chat and streaming.
-- The current main app does not include this router; the production-style `/chat` route lives in `app.py`.
-
-Typical changes:
-
-- Split routes out of `app.py`.
-- Add independent API routers.
-- Integrate streaming chat into the main app.
 
 ### `core/`
 
@@ -232,18 +215,6 @@ Session memory layer.
 - `session_store.py` is an example implementation for session-related context.
 - The current main graph mostly passes through `session_id`; this layer can be expanded for short-term or long-term memory.
 
-### `prompts/`
-
-Prompt template layer.
-
-- `chat_prompt.py`: chat prompt example.
-- `tool_selector_prompt.py`: tool selector prompt example.
-
-Typical changes:
-
-- Centralize prompts that are currently embedded in nodes or services.
-- Add versioned prompts.
-
 ### `docs/`
 
 RAG knowledge source files.
@@ -256,24 +227,6 @@ RAG knowledge source files.
 Development and smoke test scripts.
 
 - `test_graph_smoke.py`: covers direct routing, router behavior, guardrail validation, state propagation, max steps, and API response shape.
-
-### Historical / learning files
-
-The repository also keeps some day-by-day and refactoring artifacts, such as:
-
-- `day9_tool_base.py`
-- `day10_tools.py`
-- `orchestrator.py`
-- `router.py`
-- `graph_state.py`
-- `llm_decider.py`
-- `eval_*.py`
-- `REFACTORING_SUMMARY.md`
-- `progress.md`
-- `task_plan.md`
-- `findings.md`
-
-These files are useful for understanding the project evolution, but the current main request path is `app.py -> agent_graph.py -> graphs/market_brain_graph.py -> nodes/*`.
 
 ## Setup
 
@@ -433,11 +386,7 @@ python scripts/test_graph_smoke.py
 Other test/evaluation entrypoints:
 
 ```bash
-python test_day5_chunking.py
-python test_day7_retriever.py
 python test_auth.py
-python eval_router.py
-python eval_day18_multistep.py
 ```
 
 Some tests depend on:
