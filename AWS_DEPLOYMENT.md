@@ -612,6 +612,22 @@ python build_index.py
 
 This can be run locally against RDS or as a one-off ECS task.
 
+## Seed Mock Data on RDS
+
+If the cloud database is empty, initialize the app tables and seed a few Market Brain email drafts:
+
+```bash
+python scripts/seed_mock_data.py --print-ids
+```
+
+The script creates or updates deterministic mock drafts for:
+
+- `q4_petcare`: puppy-care promotional email
+- `shipping_confidence`: shipping and tracking campaign email
+- `post_purchase_returns`: return-policy follow-up email
+
+Run this with the same `DB_*` or `DATABASE_URL` environment variables used by the deployed app. The script only seeds the business draft tables. To make RAG questions work, also run `python build_index.py` with the `RAG_DB_*` variables pointed at RDS.
+
 ## API Checks
 
 Health check:

@@ -65,7 +65,13 @@ class AnswerNode:
 
             context = "\n\n".join(context_parts)
 
-            prompt = f"""
+            if self._has_marketing_context(tool_result):
+                answer = self._generate_marketing_content_answer(
+                    message=message,
+                    marketing_context=tool_result.get("output", {}),
+                )
+            else:
+                prompt = f"""
 You are Market Brain Agent.
 
 Use the available context to answer the user.
@@ -73,8 +79,11 @@ Use the available context to answer the user.
 Rules:
 1. If retrieved documents are provided, cite them using [1], [2], etc.
 2. If a tool result is provided, summarize the tool result clearly.
-3. If context is insufficient, say what is missing.
-4. Do not invent facts.
+3. If the tool result contains product inventory or campaign data, use it as
+   grounding context for marketing content and do not ask the user for product
+   details already present in the tool result.
+4. If context is insufficient, say what is missing.
+5. Do not invent facts.
 
 User question:
 {message}
@@ -83,12 +92,12 @@ Context:
 {context}
 """
 
-            answer = self._rag_chain.invoke(
-                {
-                    "question": prompt,
-                    "context": context,
-                }
-            )
+                answer = self._rag_chain.invoke(
+                    {
+                        "question": prompt,
+                        "context": context,
+                    }
+                )
 
             latency_ms = duration_ms(start)
 
@@ -188,8 +197,59 @@ Context:
                 continue
         return total
 
+    def _has_marketing_context(self, tool_result: Dict[str, Any]) -> bool:
+        return (
+            tool_result.get("tool_name") == "get_marketing_context"
+            and bool(tool_result.get("success"))
+            and bool(tool_result.get("output", {}).get("current_product_inventory"))
+        )
+
+    def _generate_marketing_content_answer(
+        self,
+        message: str,
+        marketing_context: Dict[str, Any],
+    ) -> str:
+        products = marketing_context.get("current_product_inventory", [])
+        campaign = marketing_context.get("active_campaign", {})
+
+        in_stock_products = [
+            product for product in products
+            if product.get("inventory_status") in {"in_stock", "low_stock"}
+        ]
+        featured_products = in_stock_products[:2] or products[:2]
+
+        product_lines = []
+        for product in featured_products:
+            benefits = product.get("benefits", [])
+            benefit_text = benefits[0] if benefits else "supports everyday pet care"
+            inventory_status = product.get("inventory_status", "available")
+            product_lines.append(
+                f"{product.get('name')} ({inventory_status}): {benefit_text}"
+            )
+
+        discount = campaign.get("discount")
+        cta = campaign.get("cta") or "Shop now"
+        campaign_name = campaign.get("name") or "Pet Care Essentials"
+        end_date = campaign.get("end_date")
+
+        offer_sentence = (
+            f"For a limited time, enjoy {discount}."
+            if discount else
+            "For a limited time, stock up on customer favorites."
+        )
+        date_sentence = f" Offer ends {end_date}." if end_date else ""
+        product_sentence = " ".join(product_lines)
+
+        return (
+            f"Subject: {campaign_name} for happier, healthier pets\n\n"
+            "Hi there,\n\n"
+            "Give your pet care routine a fresh upgrade with practical essentials "
+            f"chosen for pet owners. {product_sentence} {offer_sentence}"
+            f"{date_sentence}\n\n"
+            f"{cta}."
+        )
+
 
 def answer_node(state: AgentState) -> AgentState:
     """Answer generation node entry point."""
     return _get_answer_node().invoke(state)
-

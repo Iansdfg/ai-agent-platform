@@ -147,7 +147,48 @@ class PlannerNode:
             "查看草稿",
             "生成营销",
         ]
-        return any(keyword in lower for keyword in keywords)
+        return (
+            any(keyword in lower for keyword in keywords)
+            or self._marketing_content_generation_request(lower)
+        )
+
+    def _marketing_content_generation_request(self, lower_message: str) -> bool:
+        """Detect requests that need current marketing/product context."""
+        generation_keywords = [
+            "promotional email",
+            "marketing email",
+            "promo copy",
+            "product copy",
+            "write an email about our products",
+            "email for pet owners",
+            "pet owners",
+        ]
+        product_context_keywords = [
+            "our products",
+            "product",
+            "products",
+            "inventory",
+            "campaign",
+            "discount",
+            "cta",
+        ]
+
+        if any(keyword in lower_message for keyword in generation_keywords):
+            return True
+
+        asks_to_write = any(
+            keyword in lower_message
+            for keyword in ["write", "draft", "generate", "create"]
+        )
+        mentions_email_or_copy = any(
+            keyword in lower_message
+            for keyword in ["email", "copy", "content", "promotion", "promo"]
+        )
+        mentions_business_context = any(
+            keyword in lower_message for keyword in product_context_keywords
+        )
+
+        return asks_to_write and mentions_email_or_copy and mentions_business_context
 
     def _high_confidence_retrieval_request(self, message: str) -> bool:
         """Detect high-confidence retrieval requests."""

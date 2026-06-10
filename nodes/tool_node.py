@@ -38,6 +38,7 @@ class ToolNode:
         Tool selection:
         - get_draft: if message asks get/show/read and contains draft_id
         - update_draft: if message asks update/modify/edit and contains draft_id
+        - get_marketing_context: if message asks for marketing/product email or copy
         - create_draft: if message mentions draft/campaign/草稿/营销
         - search: default fallback
         """
@@ -138,6 +139,16 @@ class ToolNode:
                 },
             )
 
+        # Tool: get_marketing_context
+        if self._marketing_content_generation_request(lower):
+            return (
+                "get_marketing_context",
+                {
+                    "query": message,
+                    "workspace_id": "default",
+                },
+            )
+
         # Tool: create_draft
         if any(
             keyword in lower
@@ -155,6 +166,44 @@ class ToolNode:
 
         # Default: search
         return "search", {"query": message}
+
+    def _marketing_content_generation_request(self, lower_message: str) -> bool:
+        """Detect content generation that needs current product/campaign context."""
+        generation_keywords = [
+            "promotional email",
+            "marketing email",
+            "promo copy",
+            "product copy",
+            "write an email about our products",
+            "email for pet owners",
+            "pet owners",
+        ]
+        product_context_keywords = [
+            "our products",
+            "product",
+            "products",
+            "inventory",
+            "campaign",
+            "discount",
+            "cta",
+        ]
+
+        if any(keyword in lower_message for keyword in generation_keywords):
+            return True
+
+        asks_to_write = any(
+            keyword in lower_message
+            for keyword in ["write", "draft", "generate", "create"]
+        )
+        mentions_email_or_copy = any(
+            keyword in lower_message
+            for keyword in ["email", "copy", "content", "promotion", "promo"]
+        )
+        mentions_business_context = any(
+            keyword in lower_message for keyword in product_context_keywords
+        )
+
+        return asks_to_write and mentions_email_or_copy and mentions_business_context
 
     def _extract_draft_id(self, message: str) -> str | None:
         """Extract draft ID from message."""

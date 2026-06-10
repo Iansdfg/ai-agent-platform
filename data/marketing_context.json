@@ -1,0 +1,51 @@
+{
+  "inventory_last_updated": "2026-06-09",
+  "products": [
+    {
+      "sku": "PUPPY-FOOD-STARTER",
+      "name": "Puppy Growth Starter Kit",
+      "category": "puppy care",
+      "benefits": [
+        "supports puppy growth with protein-rich nutrition",
+        "includes healthy fats and essential nutrients",
+        "made for new pet parents building a daily feeding routine"
+      ],
+      "inventory_status": "in_stock",
+      "units_available": 320
+    },
+    {
+      "sku": "SAFE-CHEW-BUNDLE",
+      "name": "Safe Chew Toy Bundle",
+      "category": "toys",
+      "benefits": [
+        "keeps dogs engaged during quiet time",
+        "tested for pet safety",
+        "bundled for easy gifting and replenishment"
+      ],
+      "inventory_status": "in_stock",
+      "units_available": 185
+    },
+    {
+      "sku": "TRAVEL-WATER-BOWL",
+      "name": "Travel Water Bowl",
+      "category": "accessories",
+      "benefits": [
+        "helps pet owners keep dogs hydrated on walks and trips",
+        "lightweight and easy to pack",
+        "simple add-on for outdoor pet care campaigns"
+      ],
+      "inventory_status": "low_stock",
+      "units_available": 42
+    }
+  ],
+  "active_campaign": {
+    "campaign_id": "summer_petcare_2026",
+    "name": "Summer Pet Care Essentials",
+    "audience": "pet owners and dog owners",
+    "message": "Help customers stock up on safe, practical pet care essentials for summer routines.",
+    "discount": "15% off eligible puppy care and dog accessory bundles",
+    "cta": "Shop summer pet care essentials",
+    "start_date": "2026-06-01",
+    "end_date": "2026-06-30"
+  }
+}

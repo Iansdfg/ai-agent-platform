@@ -12,6 +12,11 @@ Run: python scripts/test_graph_smoke.py
 """
 
 import uuid
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from agent_graph import agent_graph
 
 
@@ -177,6 +182,39 @@ def test_api_stability():
     print(f"  All required fields present")
 
 
+def test_promotional_email_uses_marketing_context():
+    """Test product email generation fetches current marketing context first."""
+    print("\n=== Test 7: Marketing Context Tool for Promotional Email ===")
+
+    message = "Write a short promotional email for pet owners about our products."
+    request_id = str(uuid.uuid4())
+
+    result = agent_graph.invoke(
+        message=message,
+        request_id=request_id,
+        session_id="marketing-context-test",
+    )
+
+    tool_trace = result.get("tool_trace", [])
+    tool_names = [item.get("name") for item in tool_trace]
+    answer = result.get("answer", "")
+    answer_lower = answer.lower()
+
+    assert "get_marketing_context" in tool_names, \
+        "Promotional email should fetch marketing context"
+    assert "subject:" in answer_lower, "Answer should include an email subject"
+    assert "shop" in answer_lower or "cta" in answer_lower, \
+        "Answer should include a promotional CTA"
+    assert "product context" not in answer_lower, \
+        "Answer should not say product context is missing"
+    assert "missing" not in answer_lower, \
+        "Answer should not say required product context is missing"
+
+    print("✓ Marketing context promotional email test passed")
+    print(f"  Tool used: {'get_marketing_context' in tool_names}")
+    print(f"  Answer: {answer[:120]}...")
+
+
 def main():
     """Run all smoke tests."""
     print("=" * 60)
@@ -190,6 +228,7 @@ def main():
         test_state_propagation,
         test_max_steps_guardrail,
         test_api_stability,
+        test_promotional_email_uses_marketing_context,
     ]
     
     passed = 0

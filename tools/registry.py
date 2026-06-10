@@ -4,6 +4,7 @@ from tools.base import BaseTool, ToolResult
 from tools.draft_tool import CreateDraftTool, GetDraftTool, UpdateDraftTool
 from tools.http_tool import HttpTool
 from tools.learning_notes_tool import LearningNotesTool
+from tools.marketing_context_tool import GetMarketingContextTool
 from tools.search_tool import SearchTool
 
 
@@ -32,6 +33,7 @@ def build_default_registry() -> ToolRegistry:
     registry.register(LearningNotesTool())
     registry.register(SearchTool())
     registry.register(HttpTool())
+    registry.register(GetMarketingContextTool())
 
     # Draft persistence tools
     registry.register(CreateDraftTool())
