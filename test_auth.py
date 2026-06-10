@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 def load_app(api_key: str | None):
     if api_key is None:
-        env = {k: v for k, v in os.environ.items() if k != "APP_API_KEY"}
+        env = {**os.environ, "APP_API_KEY": ""}
     else:
         env = {**os.environ, "APP_API_KEY": api_key}
 

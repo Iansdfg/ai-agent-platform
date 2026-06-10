@@ -9,4 +9,4 @@ def log_event(event: str, **fields: Any) -> None:
         "event": event,
         **fields,
     }
-    print(json.dumps(payload, default=str))
+    print(json.dumps(payload, default=str), flush=True)

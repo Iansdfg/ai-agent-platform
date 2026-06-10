@@ -8,6 +8,7 @@ import re
 import time
 from typing import Any, Dict
 
+from core.logging import log_event
 from core.tracing import build_trace_item, duration_ms
 from state.agent_state import AgentState
 from tools.registry import build_default_registry
@@ -68,6 +69,17 @@ class ToolNode:
                 error=tool_result.error,
             )
 
+            log_event(
+                "eval_process_tool_completed",
+                request_id=state["request_id"],
+                session_id=state.get("session_id"),
+                step_count=int(state.get("step_count", 0)) + 1,
+                tool_name=tool_name,
+                success=tool_result.success,
+                latency_ms=latency_ms,
+                error=tool_result.error,
+            )
+
             return {
                 **state,
                 "step_count": int(state.get("step_count", 0)) + 1,
@@ -97,6 +109,16 @@ class ToolNode:
                 error=str(e),
             )
 
+            log_event(
+                "eval_process_tool_failed",
+                request_id=state["request_id"],
+                session_id=state.get("session_id"),
+                step_count=int(state.get("step_count", 0)) + 1,
+                tool_name=tool_name,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
+
             return {
                 **state,
                 "step_count": int(state.get("step_count", 0)) + 1,
@@ -111,6 +133,9 @@ class ToolNode:
         """Select tool and prepare tool input."""
         lower = message.lower()
         draft_id = self._extract_draft_id(message)
+
+        if self._product_faq_shipping_request(lower):
+            return "search", {"query": message}
 
         # Tool: get_draft
         if (
@@ -167,6 +192,25 @@ class ToolNode:
         # Default: search
         return "search", {"query": message}
 
+    def _product_faq_shipping_request(self, lower_message: str) -> bool:
+        """Detect product FAQ/shipping requests that should not mutate drafts."""
+        product_faq_terms = [
+            "product faq",
+            "order tracking",
+            "standard shipping",
+            "expedited shipping",
+            "tracking is provided",
+        ]
+        shipping_terms = [
+            "shipping",
+            "ships",
+            "order ships",
+            "tracking",
+            "checkout",
+        ]
+
+        return any(term in lower_message for term in product_faq_terms + shipping_terms)
+
     def _marketing_content_generation_request(self, lower_message: str) -> bool:
         """Detect content generation that needs current product/campaign context."""
         generation_keywords = [
@@ -207,7 +251,6 @@ class ToolNode:
 
     def _extract_draft_id(self, message: str) -> str | None:
         """Extract draft ID from message."""
-        # Try to find UUID
         uuid_match = re.search(
             r"\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-"
             r"[a-f0-9]{4}-[a-f0-9]{12}\b",
@@ -218,11 +261,14 @@ class ToolNode:
         if uuid_match:
             return uuid_match.group(0)
 
-        # Try to find simple draft identifier
-        simple_match = re.search(r"\bdraft[_\s-]?([a-zA-Z0-9_-]+)\b", message)
+        explicit_match = re.search(
+            r"\b(?:draft_id|draft id|draft-id)\s*[:=]?\s*([a-zA-Z0-9_-]+)\b",
+            message,
+            re.IGNORECASE,
+        )
 
-        if simple_match:
-            return simple_match.group(1)
+        if explicit_match:
+            return explicit_match.group(1)
 
         return None
 

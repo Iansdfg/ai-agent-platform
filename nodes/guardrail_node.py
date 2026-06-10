@@ -6,6 +6,7 @@ Validates and enforces safety constraints on planner decisions.
 
 import time
 
+from core.logging import log_event
 from core.tracing import build_trace_item, duration_ms
 from state.agent_state import AgentState
 
@@ -79,6 +80,19 @@ def guardrail_node(state: AgentState) -> AgentState:
         },
         latency_ms=latency_ms,
         success=True,
+    )
+
+    log_event(
+        "eval_process_guardrail_completed",
+        request_id=state["request_id"],
+        session_id=state.get("session_id"),
+        original_action=original_action,
+        next_action=next_action,
+        step_count=step_count,
+        max_steps=max_steps,
+        guardrail_triggered=guardrail_triggered,
+        violation_reason=violation_reason,
+        latency_ms=latency_ms,
     )
 
     return {

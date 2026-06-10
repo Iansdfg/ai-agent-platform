@@ -4,6 +4,7 @@ Router node for Market Brain Agent.
 Determines whether a query belongs to Market Brain domain or should be handled directly.
 """
 
+from core.logging import log_event
 from core.tracing import write_trace_log
 from state.agent_state import AgentState
 
@@ -59,6 +60,13 @@ def router_node(state: AgentState) -> AgentState:
             "message": state["message"],
             "route": route,
         }
+    )
+
+    log_event(
+        "eval_process_router_completed",
+        request_id=state["request_id"],
+        session_id=state.get("session_id"),
+        route=route,
     )
 
     return {

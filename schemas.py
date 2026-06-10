@@ -11,5 +11,5 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     answer: str
     metadata: Dict[str, Any]
-    tool_trace: List[Dict[str, Any]] = Field(default_factory=list)
-    citations: List[Dict[str, Any]] = Field(default_factory=list)
+    tool_trace: List[Any] = Field(default_factory=list)
+    citations: List[Any] = Field(default_factory=list)

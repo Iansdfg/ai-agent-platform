@@ -8,7 +8,7 @@
   "containerDefinitions": [
     {
       "name": "ai-agent-platform",
-      "image": "347387311652.dkr.ecr.us-east-1.amazonaws.com/ai-agent-platform:amd64-20260608203805",
+      "image": "347387311652.dkr.ecr.us-east-1.amazonaws.com/ai-agent-platform:amd64-20260609195255",
       "essential": true,
       "portMappings": [
         {

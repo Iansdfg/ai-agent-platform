@@ -22,6 +22,7 @@ from typing import Any, Dict
 
 from langgraph.graph import END, StateGraph
 
+from core.logging import log_event
 from nodes import (
     answer_node,
     direct_node,
@@ -70,6 +71,13 @@ class MarketBrainGraph:
             - tool_trace: Detailed execution trace
             - citations: Document citations
         """
+        log_event(
+            "eval_process_graph_started",
+            request_id=request_id,
+            session_id=session_id,
+            max_steps=MAX_STEPS,
+        )
+
         result = self._graph.invoke(
             {
                 "message": message,
@@ -90,9 +98,21 @@ class MarketBrainGraph:
             }
         )
 
+        metadata = result.get("metadata", {})
+        log_event(
+            "eval_process_graph_completed",
+            request_id=request_id,
+            session_id=session_id,
+            route=metadata.get("route"),
+            graph_node=metadata.get("graph_node"),
+            step_count=metadata.get("step_count"),
+            trace_count=metadata.get("trace_count"),
+            latency_ms=metadata.get("latency_ms"),
+        )
+
         return {
             "answer": result.get("answer", ""),
-            "metadata": result.get("metadata", {}),
+            "metadata": metadata,
             "tool_trace": result.get("tool_trace", []),
             "citations": result.get("citations", []),
         }
